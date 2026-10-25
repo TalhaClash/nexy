@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Glow &amp; Grace Salon — Nexy Demo</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: Georgia, "Times New Roman", serif; color: #2b2126; background: #fdf8f6; }
+  .demo-banner {
+    background: #1d1d1f; color: #fff; text-align: center;
+    font-family: -apple-system, "Segoe UI", sans-serif; font-size: 13px;
+    padding: 9px 16px; letter-spacing: .02em;
+  }
+  .demo-banner strong { color: #f9a8c9; }
+  header.site {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 20px 6vw; border-bottom: 1px solid #f0e2e6;
+  }
+  .logo { font-size: 26px; font-style: italic; color: #d6336c; }
+  nav a { margin-left: 22px; color: #2b2126; text-decoration: none; font-family: -apple-system, "Segoe UI", sans-serif; font-size: 14px; }
+  .hero { text-align: center; padding: 70px 6vw 50px; }
+  .hero h1 { font-size: 44px; font-weight: normal; line-height: 1.15; }
+  .hero h1 em { color: #d6336c; }
+  .hero p { margin: 18px auto 0; max-width: 520px; font-size: 17px; line-height: 1.6; color: #6b5a61; }
+  .hero .cta {
+    display: inline-block; margin-top: 28px; background: #d6336c; color: #fff;
+    padding: 13px 30px; border-radius: 999px; text-decoration: none;
+    font-family: -apple-system, "Segoe UI", sans-serif; font-size: 15px;
+  }
+  section { padding: 40px 6vw; max-width: 880px; margin: 0 auto; }
+  section h2 { font-size: 28px; font-weight: normal; margin-bottom: 20px; color: #d6336c; }
+  .price-list { list-style: none; font-family: -apple-system, "Segoe UI", sans-serif; font-size: 15.5px; }
+  .price-list li { display: flex; justify-content: space-between; padding: 11px 2px; border-bottom: 1px dashed #ecd9df; }
+  .price-list .price { font-weight: 700; }
+  .cols { display: flex; gap: 40px; flex-wrap: wrap; font-family: -apple-system, "Segoe UI", sans-serif; font-size: 15.5px; line-height: 1.7; }
+  .cols div { flex: 1; min-width: 240px; }
+  .try-it {
+    background: #fdeef4; border: 1px solid #f6cbdd; border-radius: 14px;
+    padding: 22px 26px; font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 15.5px; line-height: 1.65;
+  }
+  .try-it strong { color: #d6336c; }
+  footer { text-align: center; padding: 34px 6vw 90px; color: #9b8790; font-family: -apple-system, "Segoe UI", sans-serif; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<div class="demo-banner">DEMO PAGE — Glow &amp; Grace Salon is a <strong>fictional business</strong> created to demonstrate the Nexy AI assistant. Prices and details are sample data.</div>
+
+<header class="site">
+  <div class="logo">Glow &amp; Grace</div>
+  <nav>
+    <a href="#services">Services</a>
+    <a href="#visit">Visit us</a>
+    <a href="https://example.com/book-glow-grace">Book</a>
+  </nav>
+</header>
+
+<div class="hero">
+  <h1>Look lovely, <em>effortlessly.</em></h1>
+  <p>Hair, skin and nails cared for by stylists who listen first. Walk-ins welcome, bookings preferred.</p>
+  <a class="cta" href="https://example.com/book-glow-grace">Book an appointment</a>
+</div>
+
+<section id="services">
+  <h2>Services &amp; prices</h2>
+  <ul class="price-list">
+    <li><span>Haircut &amp; styling</span><span class="price">₹799</span></li>
+    <li><span>Balayage / global colour</span><span class="price">from ₹4,999</span></li>
+    <li><span>Keratin treatment</span><span class="price">from ₹5,999</span></li>
+    <li><span>Manicure + pedicure</span><span class="price">₹1,199</span></li>
+    <li><span>Signature facial</span><span class="price">₹1,799</span></li>
+    <li><span>Bridal package (trial + day)</span><span class="price">₹14,999</span></li>
+  </ul>
+</section>
+
+<section id="visit">
+  <div class="cols">
+    <div>
+      <h2>Hours</h2>
+      Tuesday – Sunday: 10 AM – 8 PM<br>
+      Monday: closed
+    </div>
+    <div>
+      <h2>Find us</h2>
+      12 Rosewood Lane, Bandra West, Mumbai<br>
+      Email: glowandgrace@example.com
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="try-it">
+    <strong>Try the assistant →</strong> tap the pink chat button (bottom-right) and ask it things like
+    “How much is a haircut?”, “Do you do keratin?”, “What time do you close on Sunday?” or “How do I book?”.
+    It only answers from this salon's real facts — exactly how Nexy would work on your website.
+  </div>
+</section>
+
+<footer>Glow &amp; Grace Salon — fictional demo business · Chat powered by Nexy</footer>
+
+<!-- ===== Nexy install (the same 3 blocks a client site gets) ===== -->
+<link rel="stylesheet" href="nexy.css">
+<script>
+  window.NexyConfig = {
+    businessName: "Glow & Grace Salon",
+    assistantName: "Glow Assistant",
+    primaryColor: "#d6336c",
+    greeting: "Hi! I'm the Glow Assistant. Ask me about our services, prices or timings — or how to book. How can I help?",
+    facts: [
+      "Location: 12 Rosewood Lane, Bandra West, Mumbai.",
+      "Hours: Tuesday to Sunday, 10 AM to 8 PM. Closed on Mondays.",
+      "Walk-ins are welcome, but booking ahead is preferred."
+    ],
+    services: [
+      "Services: haircut & styling, balayage and global colour, keratin treatment, manicure + pedicure, signature facial, bridal packages."
+    ],
+    pricing: [
+      "Haircut & styling: ₹799.",
+      "Balayage / global colour: from ₹4,999.",
+      "Keratin treatment: from ₹5,999.",
+      "Manicure + pedicure: ₹1,199.",
+      "Signature facial: ₹1,799.",
+      "Bridal package (trial + wedding day): ₹14,999."
+    ],
+    bookingLink: "https://example.com/book-glow-grace",
+    email: "glowandgrace@example.com",
+    inputPlaceholder: "Ask about services, prices…"
+  };
+</script>
+<script src="nexy.js" defer></script>
+<!-- ===== /Nexy install ===== -->
+
+</body>
+</html>
