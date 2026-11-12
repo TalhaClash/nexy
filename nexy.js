@@ -34,13 +34,19 @@
   var assistantName = cfg.assistantName || (cfg.businessName + " Assistant");
 
   /* ---------------- backend ----------------
-     CURRENT: Pollinations.ai (no key, nothing secret in the browser).
-     GROQ SWAP (when the hosted proxy is live): change ONLY these two lines —
-       API_URL  -> the Nexy proxy endpoint URL
-       API_KEY  -> "" (the key must stay on the proxy server, NEVER here)
-     and adapt buildRequestBody()/readReply() if the proxy's shape differs.
-     Do not paste a raw Groq/OpenAI key into this file — it ships to every
-     visitor's browser. */
+     PRIMARY: the dedicated Nexy relay (Worker -> Groq). The Groq key
+     lives inside Cloudflare as a secret — NEVER paste a raw key into this
+     file, it ships to every visitor's browser. The relay returns
+     OpenAI-style JSON, read by readRelayReply().
+     FALLBACK: Pollinations.ai (no key, nothing secret in the browser),
+     used automatically only when the relay request fails. It returns
+     plain text, read by readReply().
+     ROUTE (decided 12 Nov 2026 — Route 1, dedicated proxy): RELAY_URL
+     below is Nexy's own endpoint. It accepts requests from ANY client
+     website (unlike the old shared relay, which only allowed NexaForge's
+     own sites). The endpoint has its own Groq key and a per-origin rate
+     limit. When the endpoint changes, change ONLY RELAY_URL. */
+  var RELAY_URL = "https://nexaforge-nexy.nexaforge-agency01.workers.dev";
   var API_URL = "https://text.pollinations.ai/";
   var MODEL = "openai";
 
@@ -124,14 +130,15 @@
 
   /* ---------------- rendering ---------------- */
   function esc(s) {
-    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
   function initialOf(name) {
     var t = String(name).trim();
     return t ? t.charAt(0).toUpperCase() : "C";
   }
   function linkify(s) {
-    return esc(s).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+    return esc(s).replace(/(https?:\/\/[^\s<>"']+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
   }
   function addMsg(role, text) {
     var d = document.createElement("div");
@@ -179,6 +186,28 @@
     })();
   }
 
+  /* ---------------- deterministic booking (demo) ----------------
+     When the visitor clearly asks to book (contains "book" plus a day or a
+     time), confirm it directly instead of calling the AI. This makes the
+     demo show a real booking end-to-end. Narrow on purpose: a vague
+     "how do I book?" (no day/time) still goes to the AI for the link. */
+  function bookingConfirmation(text) {
+    var t = String(text).toLowerCase();
+    if (t.indexOf("book") === -1) return null;
+    var day = null;
+    if (t.indexOf("tomorrow") !== -1) day = "Tomorrow";
+    else if (t.indexOf("today") !== -1) day = "Today";
+    else if (/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/.test(t)) {
+      day = t.match(/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/)[1];
+      day = day.charAt(0).toUpperCase() + day.slice(1);
+    }
+    var m = t.match(/(\d{1,2})\s*(am|pm)/);
+    var time = null;
+    if (m) time = parseInt(m[1], 10) + ":00 " + m[2].toUpperCase();
+    if (!day && !time) return null;
+    return "Booked ✅ " + (day || "Tomorrow") + ", " + (time || "11:00 AM");
+  }
+
   /* ---------------- send ---------------- */
   function buildMessages() {
     var arr = [{ role: "system", content: SYSTEM_PROMPT }];
@@ -191,6 +220,15 @@
     return JSON.stringify({ model: MODEL, messages: buildMessages(), private: true });
   }
   function readReply(text) { return (text || "").trim(); }
+  /* Relay path: the request carries only the messages array; the reply is
+     OpenAI-style JSON (choices[0].message.content), NOT plain text. */
+  function buildRelayBody() {
+    return JSON.stringify({ messages: buildMessages() });
+  }
+  function readRelayReply(data) {
+    var c = data && data.choices && data.choices[0] && data.choices[0].message;
+    return (c && typeof c.content === "string") ? c.content.trim() : "";
+  }
 
   async function send() {
     var text = input.value.trim();
@@ -208,12 +246,43 @@
     msgsEl.appendChild(typing);
     msgsEl.scrollTop = msgsEl.scrollHeight;
 
+    /* Deterministic booking: confirm directly, no AI call. */
+    var booked = bookingConfirmation(text);
+    if (booked) {
+      typing.innerHTML = "";
+      typeInto(typing, booked, function () {
+        messages.push({ role: "assistant", content: booked });
+        save();
+        sending = false;
+        sendBtn.disabled = false;
+        input.focus();
+      });
+      return;
+    }
+
     var reply = "";
+
+    /* Primary: Cloudflare relay (see top of file). One attempt with a 25s
+       cap; any failure (network error, non-200, unexpected payload) leaves
+       reply empty and falls through to the Pollinations fallback below. */
+    try {
+      var rctrl = new AbortController();
+      var rtimer = setTimeout(function () { rctrl.abort(); }, 25000);
+      var rres = await fetch(RELAY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: buildRelayBody(),
+        signal: rctrl.signal
+      });
+      clearTimeout(rtimer);
+      if (rres.ok) { reply = readRelayReply(await rres.json()); }
+    } catch (e) { /* relay unreachable — fall back to Pollinations below */ }
+
     var body = buildRequestBody();
-    // The free backend rate-limits per IP (1 reply / 30s, HTTP 402). Patient
+    // Fallback only (the loop below is skipped when the relay answered):
+    // Pollinations rate-limits per IP (1 reply / 30s, HTTP 402). Patient
     // backoff (5s + 12s + 20s = up to ~37s) rides out the window instead of
-    // falling back — a slow real answer beats an apology. When the Groq proxy
-    // replaces the backend (see top of file), these waits can shrink again.
+    // giving up — a slow real answer beats an apology.
     var RETRY_WAITS = [0, 5000, 12000, 20000];
     for (var attempt = 0; attempt < RETRY_WAITS.length && !reply; attempt++) {
       if (attempt > 0) await new Promise(function (r) { setTimeout(r, RETRY_WAITS[attempt]); });
