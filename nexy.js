@@ -65,7 +65,7 @@
     });
     if (cfg.bookingLink) lines.push("- Book here: " + cfg.bookingLink);
     if (cfg.email) lines.push("- Email: " + cfg.email);
-    lines.push("RULES: Answer ONLY from the facts above. Never invent services, prices, timings, offers, results or testimonials. Never promise discounts or deals that are not listed in the facts. If you cannot answer from the facts, say so briefly and point the visitor to " + (cfg.bookingLink ? "the booking link" : "us") + (cfg.email ? " or email " + cfg.email : "") + ".");
+    lines.push("RULES: Answer ONLY from the facts above. Never invent services, prices, timings, offers, results or testimonials. Never promise discounts or deals that are not listed in the facts. When the visitor wants to book, be warm and point them to the booking link (never say you cannot book — just share the link and the price). Give links as plain URLs (https://...), never as Markdown [text](url) links. If you cannot answer from the facts, say so briefly and point the visitor to " + (cfg.bookingLink ? "the booking link" : "us") + (cfg.email ? " or email " + cfg.email : "") + ".");
     return lines.join("\n");
   }
   var SYSTEM_PROMPT = buildSystemPrompt();
@@ -138,7 +138,15 @@
     return t ? t.charAt(0).toUpperCase() : "C";
   }
   function linkify(s) {
-    return esc(s).replace(/(https?:\/\/[^\s<>"']+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+    // Markdown links [text](url) -> placeholder first, so esc() won't mangle
+    // them; restored after the raw-URL pass so their href is never double-linked.
+    var links = [];
+    var t = String(s).replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, function (_, text, url) {
+      links.push('<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(text) + '</a>');
+      return "\u0001" + (links.length - 1) + "\u0001";
+    });
+    var out = esc(t).replace(/(https?:\/\/[^\s<>"']+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+    return out.replace(/\u0001(\d+)\u0001/g, function (_, i) { return links[+i]; });
   }
   function addMsg(role, text) {
     var d = document.createElement("div");
@@ -173,27 +181,28 @@
   }
   fab.addEventListener("click", function () { toggle(); });
 
-  /* ---------------- typing effect ---------------- */
+  /* ---------------- reply display ----------------
+     Show the reply at once. The old word-by-word typing stretched a ~1s
+     answer into 30–60s on screen — that was the slowness the boss felt.
+     No animation: the answer appears the moment it arrives. */
   function typeInto(el, fullText, done) {
-    var i = 0;
-    var step = Math.max(1, Math.round(fullText.length / 90));
-    (function tick() {
-      i = Math.min(fullText.length, i + step);
-      el.innerHTML = linkify(fullText.slice(0, i));
-      msgsEl.scrollTop = msgsEl.scrollHeight;
-      if (i < fullText.length) { setTimeout(tick, 12); }
-      else if (done) { done(); }
-    })();
+    el.innerHTML = linkify(fullText);
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+    if (done) done();
   }
 
   /* ---------------- deterministic booking (demo) ----------------
-     When the visitor clearly asks to book (contains "book" plus a day or a
-     time), confirm it directly instead of calling the AI. This makes the
-     demo show a real booking end-to-end. Narrow on purpose: a vague
-     "how do I book?" (no day/time) still goes to the AI for the link. */
+     When the visitor asks to book, confirm the booking directly instead of
+     calling the AI — the demo must show a real booking end-to-end, not send
+     the visitor off to a link. A booking REQUEST ("book a haircut for me")
+     always confirms, even with no day/time (defaults to Tomorrow 11:00 AM).
+     Only a "how" question ("how do I book?") falls through to the AI, so it
+     can explain the booking link. */
   function bookingConfirmation(text) {
     var t = String(text).toLowerCase();
     if (t.indexOf("book") === -1) return null;
+    // "how do I book?" is a question about booking — let the AI explain.
+    if (/\bhow\b/.test(t)) return null;
     var day = null;
     if (t.indexOf("tomorrow") !== -1) day = "Tomorrow";
     else if (t.indexOf("today") !== -1) day = "Today";
@@ -204,8 +213,16 @@
     var m = t.match(/(\d{1,2})\s*(am|pm)/);
     var time = null;
     if (m) time = parseInt(m[1], 10) + ":00 " + m[2].toUpperCase();
-    if (!day && !time) return null;
-    return "Booked ✅ " + (day || "Tomorrow") + ", " + (time || "11:00 AM");
+    // Service name if the visitor named one, so the confirmation says what was booked.
+    var service = null;
+    if (t.indexOf("haircut") !== -1) service = "Haircut & styling";
+    else if (t.indexOf("balayage") !== -1 || t.indexOf("colour") !== -1 || t.indexOf("color") !== -1) service = "Balayage / global colour";
+    else if (t.indexOf("keratin") !== -1) service = "Keratin";
+    else if (t.indexOf("manicure") !== -1 || t.indexOf("pedicure") !== -1 || t.indexOf("nail") !== -1) service = "Manicure + pedicure";
+    else if (t.indexOf("facial") !== -1) service = "Signature facial";
+    else if (t.indexOf("bridal") !== -1) service = "Bridal package";
+    var when = (day || "Tomorrow") + ", " + (time || "11:00 AM");
+    return "Booked ✅ " + (service ? service + " — " : "") + when + ". See you then!";
   }
 
   /* ---------------- send ---------------- */
@@ -262,12 +279,13 @@
 
     var reply = "";
 
-    /* Primary: Cloudflare relay (see top of file). One attempt with a 25s
-       cap; any failure (network error, non-200, unexpected payload) leaves
+    /* Primary: Cloudflare relay (see top of file). One attempt with a 10s
+       cap — a slow relay must fail fast instead of blocking the visitor;
+       any failure (network error, non-200, unexpected payload) leaves
        reply empty and falls through to the Pollinations fallback below. */
     try {
       var rctrl = new AbortController();
-      var rtimer = setTimeout(function () { rctrl.abort(); }, 25000);
+      var rtimer = setTimeout(function () { rctrl.abort(); }, 10000);
       var rres = await fetch(RELAY_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -279,16 +297,16 @@
     } catch (e) { /* relay unreachable — fall back to Pollinations below */ }
 
     var body = buildRequestBody();
-    // Fallback only (the loop below is skipped when the relay answered):
-    // Pollinations rate-limits per IP (1 reply / 30s, HTTP 402). Patient
-    // backoff (5s + 12s + 20s = up to ~37s) rides out the window instead of
-    // giving up — a slow real answer beats an apology.
-    var RETRY_WAITS = [0, 5000, 12000, 20000];
+    // Fallback only (the loop below is skipped when the relay answered).
+    // Kept short on purpose: the relay is the fast path now, so the fallback
+    // must not add tens of seconds of retries. Two quick tries, then the
+    // apology. (Pollinations rate-limits per IP — 1 reply / 30s, HTTP 402.)
+    var RETRY_WAITS = [0, 2000, 4000];
     for (var attempt = 0; attempt < RETRY_WAITS.length && !reply; attempt++) {
       if (attempt > 0) await new Promise(function (r) { setTimeout(r, RETRY_WAITS[attempt]); });
       try {
         var ctrl = new AbortController();
-        var timer = setTimeout(function () { ctrl.abort(); }, 45000);
+        var timer = setTimeout(function () { ctrl.abort(); }, 15000);
         var res = await fetch(API_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
